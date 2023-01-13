@@ -1,0 +1,62 @@
+version: "3.8"
+
+services:
+    django:
+        build: .
+        container_name: microservice_one
+        command: python manage.py runserver 0.0.0.0:8001
+        volumes:
+            - .:/usr/src/DjangoProject/
+        ports:
+            - "8001:8001"
+        environment:
+            - CELERY_BROKER=redis://redis:6379/0
+            - CELERY_BACKEND=redis://redis:6379/0
+        depends_on:
+            - redis
+    celery:
+        build: .
+        container_name: celery-service
+        command: celery -A core worker -l info
+        volumes:
+            - .:/usr/src/DjangoProject
+        environment:
+            - CELERY_BROKER=redis://redis:6379/0
+            - CELERY_BACKEND=redis://redis:6379/0
+        depends_on:
+            - django
+            - redis
+
+
+    celery-beats:
+        build: .
+        container_name: celery-beats-service
+        command: celery -A core beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+        volumes:
+            - .:/usr/src/DjangoProject
+        environment:
+            - CELERY_BROKER=redis://redis:6379/0
+            - CELERY_BACKEND=redis://redis:6379/0
+        depends_on:
+            - django
+            - redis
+
+    redis:
+        image: "redis:alpine"
+        container_name: redis-service
+        ports:
+            - "6379:6379"
+
+    flower:
+        image: mher/flower:0.9.5
+        container_name: flower-service
+        command: ['flower', '--broker=redis://redis:6379', '--port=5555']
+        environment:
+            - CELERY_BROKER_URL=redis://redis:6379/0
+            - FLOWER_PORT=5555
+        restart: always
+        ports:
+            - "5555:5555"
+        depends_on:
+            - redis
+            - celery
